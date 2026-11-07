@@ -4,9 +4,17 @@
   const d=window.BONK;
   const {build,offerLevels}=window.BONK_BUILD;
   const aliases=window.BONK_ASSIST_ALIASES;
+  const stats=window.BONK_ASSIST_STATS;
+  const {fold}=stats;
+  const moveIndex=new Map();
+  for(const [key,move] of Object.entries(d.moves)){
+    const entry={key,...move};
+    moveIndex.set(fold(move.name),entry);
+    if(aliases.moves[key]) moveIndex.set(fold(aliases.moves[key]),entry);
+  }
+  const typeByItem=new Map(Object.entries(d.typeItems).map(([type,key])=>[key,type]));
   const pokemon=new Map(d.pokemon.map((p)=>[p.id,p]));
   const modes={classic:"Classic",survival:"Survival",boss:"Boss"};
-  const fold=(s)=>String(s??"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim();
   const matches=(name,key,english,group)=>[english,aliases[group][key]].some((n)=>n && fold(n)===fold(name));
   const label=(entry,group)=>document.documentElement.lang.startsWith("es") ? aliases[group][entry.key]||entry.name : entry.name;
   const text=(root,selector)=>root.querySelector(selector)?.textContent.trim()??"";
@@ -74,6 +82,25 @@
     const levelUp=buttons(modal,"button.card.offer");
     if(levelUp.length) return levelUp.map((el)=>({kind:"level",element:el,name:text(el,".bd h3"),hotkey:hotkey(el,".key")}));
 
+    const blessings=buttons(modal,".cards > button.card").filter((el)=>el.querySelector('img[src*="/ui/icons/blessing.png"]'));
+    if(blessings.length) return blessings.map((el)=>({kind:"blessing",element:el,name:text(el,".bd h3"),hotkey:hotkey(el,".key")}));
+
+    const dojo=buttons(modal,".dj-grid > button.dj-stat");
+    if(dojo.length) return dojo.map((el)=>{
+      const start=el.classList.contains("on")?buttons(modal,"button.dj-go")[0]:null;
+      return {kind:"blessing",element:start||el,name:text(el,"span"),start:!!start};
+    });
+
+    const relics=buttons(modal,".rl-cards > button.rl-card");
+    if(relics.length){
+      const incoming=text(modal,".rl-incoming .rl-stats");
+      const owned=[...modal.querySelectorAll(".rl-mine .rl-chip-bd > span")].map((el)=>el.textContent.trim());
+      return relics.map((el)=>({
+        kind:"relic",element:el,name:text(el,".rl-bd h3"),hotkey:hotkey(el,".rl-key"),
+        modifiers:text(el,".rl-stats"),incoming,owned
+      }));
+    }
+
     const bill=modal.querySelector(".bm-win");
     if(bill){
       return buttons(bill,"button.bm-row:not(.off)").map((el)=>{
@@ -85,7 +112,7 @@
     }
 
     const shop=modal.classList.contains("shop-modal");
-    const itemCards=buttons(modal,".cards > button.card").filter((el)=>
+    const itemCards=buttons(modal,".cards > button.card:not(.pact)").filter((el)=>
       iconKey(el) && Number(el.style.opacity||1)>=1 && (!shop||el.querySelector(".price.ok"))
     );
     if(itemCards.length) return itemCards.map((el)=>({kind:"item",element:el,name:text(el,".bd h3"),hotkey:hotkey(el,".key")}));
@@ -107,12 +134,27 @@
       };
     });
     const level=Number(text(root,".tl-lvl b"))||1;
+    const stage=Number(text(root,".ht-zone").match(/(\d+)\s*\//)?.[1])||1;
+    const health=root.querySelector(".hpbar.low")?"low":root.querySelector(".hpbar.mid")?"mid":"normal";
     return {
-      level, known, offers:readOffers().filter((offer)=>offer.name),
-      free:moveSlots.some((slot)=>slot.classList.contains("empty")),
+      level, stage, health, known, offers:readOffers().filter((offer)=>offer.name),
+      freeSlots:moveSlots.filter((slot)=>slot.classList.contains("empty")).length,
       items:[...root.querySelectorAll(".hud-br > .itm")],
       vitamins:[...root.querySelectorAll(".hud-bl > .slots > .slot.mini:not(.empty)")]
     };
+  }
+
+  function itemScore(item,types,values){
+    if(!item) return 0;
+    const type=typeByItem.get(item.key);
+    if(type) return types.has(type)?1.8:.25;
+    if(item.key==="shell-bell") return values.lifesteal*.8;
+    if(item.key==="leftovers") return values.regen*1.7;
+    if(item.key==="focus-sash"||item.key==="max-revive") return values.armor*1.8;
+    const modifiers=item.effect.split(/\.\s/)[0].split(/\s+(?:and|e|but)\s+|,\s+(?=[+−-])/);
+    // Score flat modifiers only when we can read the full first clause, including any trade-off.
+    const parsed=modifiers.map(stats.parse);
+    return parsed.every(Boolean)?parsed.reduce((sum,mod)=>sum+stats.score(mod,values),0):0;
   }
 
   function suggest(b,run){
@@ -129,12 +171,38 @@
     const missingItems=b.items.filter((x)=>!hasGear(run.items,x,"items"));
     const missingVits=b.vitamins.filter((x)=>!hasGear(run.vitamins,x,"vitamins"));
     const priority=state.find((s)=>s.move.key===b.priority.key);
-    const available=state.filter((s)=>s.unlocked&&(s.level>0||run.free));
+    const available=state.filter((s)=>s.unlocked&&(s.level>0||run.freeSlots));
+    const active=run.known.flatMap((slot)=>slot.names.map((name)=>moveIndex.get(fold(name))).filter(Boolean));
+    const types=new Set([...active,...b.kit].filter((move)=>move.cls!=="status").map((move)=>move.type));
+    const values=stats.weights(b,run,mode,active);
+    const statTotal=(value)=>{
+      const mods=value.split(" · ").map(stats.parse);
+      return mods.every(Boolean)?mods.reduce((sum,mod)=>sum+stats.score(mod,values),0):null;
+    };
+    const reserved=pair.filter((s)=>s.level===0).length;
     const early=run.level<5 && run.known.filter((s)=>s.names.length).length<=1;
     const cards=run.offers.map((card)=>{
+      if(card.kind==="blessing"){
+        const bonus=stats.parse(card.name);
+        const score=stats.score(bonus,values);
+        return {...card,score,why:score>0?(card.start?"Bonus selezionato. Avvia la prova.":stats.explain(bonus,run)):""};
+      }
+      if(card.kind==="relic"){
+        const current=statTotal(card.modifiers);
+        const incoming=statTotal(card.incoming);
+        const owned=card.owned.map(statTotal);
+        const score=current===null?0:card.incoming
+          ? incoming!==null&&incoming-current>=.5?incoming-current:0
+          : owned.length===3&&owned.every((value)=>value!==null)?current-Math.min(...owned):current;
+        return {...card,score,why:card.incoming?"Sostituzione consigliata in base alle statistiche.":"Statistiche adatte al tuo kit. Controlla anche la passiva."};
+      }
       if(card.kind==="item"){
-        const index=missingItems.findIndex((x)=>matches(card.name,x.key,x.name,"items"));
-        return {...card,score:index<0?0:60-index,why:"Oggetto da cercare per la tua build."};
+        const item=d.items.find((x)=>matches(card.name,x.key,x.name,"items"));
+        const index=b.items.indexOf(item);
+        const owned=item&&hasGear(run.items,item,"items");
+        const bonus=itemScore(item,types,values);
+        const score=index>=0&&!owned?60-index:bonus>0?Math.min(25,bonus*5+(item.rarity??0)*.05):0;
+        return {...card,score,why:index>=0&&!owned?"Oggetto da cercare per la tua build.":"Bonus utile tra gli oggetti disponibili."};
       }
       if(card.kind==="fusion"){
         const signature=trackFusion&&matches(card.name,b.fusion.key,b.fusion.name,"fusions");
@@ -143,7 +211,7 @@
       const move=state.find((s)=>matches(card.name,s.move.key,s.move.name,"moves"));
       if(fused&&matches(card.name,b.fusion.key,b.fusion.name,"fusions")) return {...card,score:95,why:"Potenzia la fusione firma."};
       if(move){
-        if(move.level===0&&!run.free) return {...card,score:0};
+        if(move.level===0&&!run.freeSlots) return {...card,score:0};
         const ingredient=pair.includes(move);
         const priorityMove=move===priority;
         const score=ingredient&&move.level<8
@@ -151,11 +219,20 @@
           : priorityMove?74:early&&move.level>0?68:move.level>0?56:44;
         return {...card,score,why:ingredient&&move.level<8?"Ingrediente della fusione firma.":priorityMove?"Priorità del tuo obiettivo.":"Mossa del kit consigliato."};
       }
-      const vitamin=b.vitamins.find((x)=>matches(card.name,x.key,x.name,"vitamins"));
-      if(vitamin) return {...card,score:38-b.vitamins.indexOf(vitamin),why:"Vitamina consigliata per questa build."};
-      return {...card,score:0};
+      const vitamin=d.vitamins.find((x)=>matches(card.name,x.key,x.name,"vitamins"));
+      if(vitamin){
+        const index=b.vitamins.indexOf(vitamin);
+        const bonus=stats.score(stats.parse(vitamin.effect.split(" per livello comune")[0]),values);
+        return {...card,score:index>=0?38-index:Math.min(22,bonus*8),why:index>=0?"Vitamina consigliata per questa build.":"Bonus alternativo utile in questa fase."};
+      }
+      const alternative=moveIndex.get(fold(card.name));
+      if(!alternative) return {...card,score:0};
+      const held=active.includes(alternative);
+      const affinity=alternative.cls==="status"?0:values[alternative.cls]??0;
+      const canLearn=run.freeSlots>reserved&&affinity>0&&types.has(alternative.type);
+      return {...card,score:held?25+affinity:canLearn?15:0,why:held?"Potenzia una mossa che stai già usando.":"Copertura coerente con la tua build."};
     }).sort((a,b)=>b.score-a.score);
-    const nextIngredient=pair.find((s)=>s.unlocked&&s.level===0&&run.free)??pair.find((s)=>s.level>0&&s.level<8);
+    const nextIngredient=pair.find((s)=>s.unlocked&&s.level===0&&run.freeSlots)??pair.find((s)=>s.level>0&&s.level<8);
     const target=nextIngredient??(available.includes(priority)?priority:available.find((s)=>s.move.cls!=="status"));
     const caption=fused?"Fusione completata":linked?"Mosse unite":ready?"Fusione pronta":run.level<=2?"Partenza":"Costruisci il kit";
     const choice=cards[0]?.score>0?cards[0]:null;
@@ -165,7 +242,7 @@
       why=choice.why;
     } else if(cards.length){
       title="Nessuna priorità tra le offerte";
-      why="Valuta cosa manca alla tua build.";
+      why="Le offerte disponibili richiedono una scelta manuale.";
     } else if(ready){
       title=label(b.fusion,"fusions");
       why="Entrambi gli ingredienti sono al livello 8. Cerca la Macchina di Bill.";
@@ -177,7 +254,7 @@
       why=target===nextIngredient?"Porta a livello 8 i due ingredienti della fusione.":"Priorità per il kit selezionato.";
     } else {
       title="Cerca un potenziamento utile";
-      why=run.free?"Aspetta le offerte delle mosse del tuo kit.":"Gli slot sono pieni. Potenzia una mossa utile già equipaggiata.";
+      why=run.freeSlots?"Aspetta le offerte delle mosse del tuo kit.":"Gli slot sono pieni. Potenzia una mossa utile già equipaggiata.";
     }
     return {choice,caption,title,why,pair,missingItems,missingVits};
   }
@@ -248,7 +325,7 @@
       return;
     }
     const run=readRun(root);
-    if(root!==hud||run.level<lastLevel){
+    if(root!==hud||form.partner!==partner?.id||run.level<lastLevel){
       hud=root;
       partner=pokemon.get(form.partner);
       folded=false;
@@ -258,6 +335,7 @@
     lastLevel=run.level;
     if(!plan){
       highlight(null);
+      if(panel) panel.hidden=true;
       return;
     }
     if(!panel) mount();
