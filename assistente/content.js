@@ -19,6 +19,8 @@
   let previous="";
   let lastLevel=0;
   let plan=null;
+  let framed=null;
+  let frame=null;
 
   function create(tag,value,cls){
     const node=document.createElement(tag);
@@ -52,6 +54,47 @@
       return iconKey(slot)===icon;
     });
   }
+  function highlight(element){
+    if(framed===element && (!element||frame?.parentElement===element)) return;
+    frame?.remove();
+    framed?.classList.remove("pbrl-frame-host");
+    framed=element;
+    if(!element) return;
+    if(getComputedStyle(element).position==="static") element.classList.add("pbrl-frame-host");
+    frame=create("span","","pbrl-choice-frame");
+    frame.setAttribute("aria-hidden","true");
+    element.append(frame);
+  }
+
+  function readOffers(){
+    const modal=[...document.querySelectorAll(".modal")].findLast(shown);
+    if(!modal||modal.querySelector(".cards.banning")) return [];
+    const buttons=(root,selector)=>[...root.querySelectorAll(selector)].filter((el)=>!el.disabled&&shown(el));
+    const hotkey=(el,selector)=>text(el,selector).match(/^\[?(\d)\]?$/)?.[1]??"";
+    const levelUp=buttons(modal,"button.card.offer");
+    if(levelUp.length) return levelUp.map((el)=>({kind:"level",element:el,name:text(el,".bd h3"),hotkey:hotkey(el,".key")}));
+
+    const bill=modal.querySelector(".bm-win");
+    if(bill){
+      return buttons(bill,"button.bm-row:not(.off)").map((el)=>{
+        const selected=el.classList.contains("sel");
+        const confirm=selected?buttons(bill,"button.bm-go.fuse")[0]:null;
+        const fuseTab=selected&&!confirm?buttons(bill,".bm-tabs > button.bm-tab:first-child")[0]:null;
+        return {kind:"fusion",element:confirm||fuseTab||el,name:text(el,".bm-rtx b"),hotkey:confirm||fuseTab?"":hotkey(el,".bm-key"),confirm:!!confirm};
+      });
+    }
+
+    const shop=modal.classList.contains("shop-modal");
+    const itemCards=buttons(modal,".cards > button.card").filter((el)=>
+      iconKey(el) && Number(el.style.opacity||1)>=1 && (!shop||el.querySelector(".price.ok"))
+    );
+    if(itemCards.length) return itemCards.map((el)=>({kind:"item",element:el,name:text(el,".bd h3"),hotkey:hotkey(el,".key")}));
+
+    const single=modal.querySelector(":scope > div.card");
+    const take=buttons(modal,":scope > .actions > button.btn.green.big")[0];
+    return single&&take&&iconKey(single) ? [{kind:"item",element:take,name:text(single,".bd h3"),hotkey:""}] : [];
+  }
+
   function readRun(root){
     const moveSlots=[...root.querySelectorAll(".hud-bl .bl-row > .slots > .slot")];
     const known=moveSlots.map((slot)=>{
@@ -64,12 +107,8 @@
       };
     });
     const level=Number(text(root,".tl-lvl b"))||1;
-    const offers=[...document.querySelectorAll("button.card.offer")].filter(shown).map((card)=>({
-      name:text(card,".bd h3"),
-      hotkey:text(card,".key").match(/^\[(\d)\]$/)?.[1]??""
-    })).filter((card)=>card.name);
     return {
-      level, known, offers,
+      level, known, offers:readOffers().filter((offer)=>offer.name),
       free:moveSlots.some((slot)=>slot.classList.contains("empty")),
       items:[...root.querySelectorAll(".hud-br > .itm")],
       vitamins:[...root.querySelectorAll(".hud-bl > .slots > .slot.mini:not(.empty)")]
@@ -93,6 +132,14 @@
     const available=state.filter((s)=>s.unlocked&&(s.level>0||run.free));
     const early=run.level<5 && run.known.filter((s)=>s.names.length).length<=1;
     const cards=run.offers.map((card)=>{
+      if(card.kind==="item"){
+        const index=missingItems.findIndex((x)=>matches(card.name,x.key,x.name,"items"));
+        return {...card,score:index<0?0:60-index,why:"Oggetto da cercare per la tua build."};
+      }
+      if(card.kind==="fusion"){
+        const signature=trackFusion&&matches(card.name,b.fusion.key,b.fusion.name,"fusions");
+        return {...card,score:signature?100:0,why:card.confirm?"Conferma la fusione firma.":"Seleziona la coppia e scegli Fusione."};
+      }
       const move=state.find((s)=>matches(card.name,s.move.key,s.move.name,"moves"));
       if(fused&&matches(card.name,b.fusion.key,b.fusion.name,"fusions")) return {...card,score:95,why:"Potenzia la fusione firma."};
       if(move){
@@ -111,14 +158,14 @@
     const nextIngredient=pair.find((s)=>s.unlocked&&s.level===0&&run.free)??pair.find((s)=>s.level>0&&s.level<8);
     const target=nextIngredient??(available.includes(priority)?priority:available.find((s)=>s.move.cls!=="status"));
     const caption=fused?"Fusione completata":linked?"Mosse unite":ready?"Fusione pronta":run.level<=2?"Partenza":"Costruisci il kit";
+    const choice=cards[0]?.score>0?cards[0]:null;
     let title,why;
-    if(cards.length&&cards[0].score>0){
-      const card=cards[0];
-      title=(card.hotkey?card.hotkey+" · ":"")+card.name;
-      why=card.why;
+    if(choice){
+      title=choice.name;
+      why=choice.why;
     } else if(cards.length){
-      title="Nessuna priorità in queste carte";
-      why="Scegli in base a ciò che manca alla run oppure aggiorna le offerte.";
+      title="Nessuna priorità tra le offerte";
+      why="Valuta cosa manca alla tua build.";
     } else if(ready){
       title=label(b.fusion,"fusions");
       why="Entrambi gli ingredienti sono al livello 8. Cerca la Macchina di Bill.";
@@ -132,10 +179,10 @@
       title="Cerca un potenziamento utile";
       why=run.free?"Aspetta le offerte delle mosse del tuo kit.":"Gli slot sono pieni. Potenzia una mossa utile già equipaggiata.";
     }
-    return {caption,title,why,pair,fused,linked,missingItems,missingVits};
+    return {choice,caption,title,why,pair,missingItems,missingVits};
   }
 
-  function render(p,run,result){
+  function render(p,run,result,hotkey,recommended){
     const top=create("div","","pbrl-top");
     top.append(create("span","RUN LAB","pbrl-kicker"),create("strong",p.name+" · Lv. "+run.level));
     const toggle=create("button",folded?"Mostra":"Riduci");
@@ -155,26 +202,39 @@
     }
     select.value=mode;
     select.addEventListener("change",()=>{mode=select.value;plan=build(partner,mode);refresh();});
-    panel.append(select);
+    const objective=create("label","","pbrl-mode");
+    objective.append(create("span","Obiettivo"),select);
+    panel.append(objective);
     const advice=create("div","","pbrl-advice");
-    advice.append(create("span",run.offers.length?"CARTA CONSIGLIATA":result.caption,"pbrl-kicker"),create("strong",result.title),create("small",result.why));
+    advice.classList.toggle("pbrl-has-choice",recommended);
+    const pick=create("div","","pbrl-pick");
+    if(hotkey) pick.append(create("span",hotkey,"pbrl-hotkey"));
+    pick.append(create("strong",result.title));
+    advice.append(create("span",recommended?"Consigliato ora":run.offers.length?"Offerte in gioco":result.caption,"pbrl-kicker"),pick,create("small",result.why));
     panel.append(advice);
+    const info=create("div","","pbrl-info");
     const equipped=run.known.filter((s)=>s.names.length).map((s)=>s.names.join(" + ")+" "+s.displayLevel).join(" · ");
-    if(equipped) panel.append(create("small","In uso · "+equipped,"pbrl-gear"));
+    if(equipped) info.append(create("small","In uso · "+equipped,"pbrl-gear"));
     if(result.pair.length){
       const row=create("div","","pbrl-pair");
-      for(const s of result.pair) row.append(create("span",label(s.move,"moves")+" "+(s.level?s.level+"/8":"—"),s.level>=8?"pbrl-ready":""));
-      panel.append(row);
+      row.append(create("span","Per la fusione","pbrl-kicker"));
+      for(const s of result.pair){
+        const ingredient=create("div","","pbrl-ingredient"+(s.level>=8?" pbrl-ready":""));
+        ingredient.append(create("span",label(s.move,"moves")),create("b",s.level?Math.min(s.level,8)+"/8":"—"));
+        row.append(ingredient);
+      }
+      info.append(row);
     } else if(plan.fusion.limited){
-      panel.append(create("small","Fusione firma esclusa dal menu standard di Bill."));
+      info.append(create("small","Fusione firma esclusa dal menu standard di Bill.","pbrl-gear"));
     }
     if(result.missingItems.length){
       const gear=result.missingItems.slice(0,2).map((x)=>label(x,"items")).join(" · ");
-      panel.append(create("small","Oggetti da cercare · "+gear,"pbrl-gear"));
+      info.append(create("small","Oggetti da cercare · "+gear,"pbrl-gear"));
     }
     if(result.missingVits.length){
-      panel.append(create("small","Vitamina da cercare · "+label(result.missingVits[0],"vitamins"),"pbrl-gear"));
+      info.append(create("small","Vitamina da cercare · "+label(result.missingVits[0],"vitamins"),"pbrl-gear"));
     }
+    panel.append(info);
   }
 
   function refresh(){
@@ -182,6 +242,7 @@
     const species=Number(root?.querySelector(".tl-portrait[data-k]")?.getAttribute("data-k"));
     const form=pokemon.get(species);
     if(!root||!form||!shown(root)){
+      highlight(null);
       if(panel) panel.hidden=true;
       if(!root){hud=null;partner=null;previous="";}
       return;
@@ -195,15 +256,20 @@
       plan=partner?.league ? build(partner,mode) : null;
     }
     lastLevel=run.level;
-    if(!plan) return;
+    if(!plan){
+      highlight(null);
+      return;
+    }
     if(!panel) mount();
     if(panel.hidden) panel.hidden=false;
     attach();
-    const result=suggest(plan,run);
-    const stamp=JSON.stringify([species,run.level,mode,folded,run.known,run.offers.length,result]);
+    const {choice,...result}=suggest(plan,run);
+    highlight(choice?.element??null);
+    panel.classList.toggle("pbrl-picking",!!run.offers.length);
+    const stamp=JSON.stringify([species,run.level,mode,folded,run.known,run.offers.length,choice?.hotkey,!!choice,result]);
     if(stamp!==previous){
       previous=stamp;
-      render(form,run,result);
+      render(form,run,result,choice?.hotkey,!!choice);
     }
   }
 
