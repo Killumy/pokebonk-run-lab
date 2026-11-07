@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "PokeBonk Run Lab Assistant",
+  "version": "1.0.0",
+  "description": "Pannello di supporto per le mosse, gli oggetti e le fusioni di PokeBonk.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "runlab-assistant@killumy.github.io"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://pokebonk.com/*", "https://www.pokebonk.com/*"],
+      "js": ["data.js", "build.js", "assistente/aliases.js", "assistente/content.js"],
+      "css": ["assistente/overlay.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}
