@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PokeBonk Run Lab Assistant",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Pannello di supporto per le scelte durante le run di PokeBonk.",
   "browser_specific_settings": {
     "gecko": {
@@ -11,7 +11,7 @@
   "content_scripts": [
     {
       "matches": ["https://pokebonk.com/*", "https://www.pokebonk.com/*"],
-      "js": ["data.js", "build.js", "assistente/aliases.js", "assistente/stats.js", "assistente/content.js"],
+      "js": ["data.js", "build.js", "assistente/aliases.js", "assistente/stats.js", "assistente/fusion-plan.js", "assistente/content.js"],
       "css": ["assistente/overlay.css"],
       "run_at": "document_idle"
     },
