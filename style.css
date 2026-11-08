@@ -70,3 +70,6 @@ dialog{padding:0;width:min(770px,calc(100% - 26px));max-width:none;max-height:ca
   .run-step{padding:9px}
   .dex-portrait{width:70px;height:64px}
 }
+
+.pbrl-launch-game, [data-pbrl-ready] .pbrl-launch-setup { display: none; }
+[data-pbrl-ready] .pbrl-launch-game { display: inline-block; }

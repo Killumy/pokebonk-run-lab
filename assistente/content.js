@@ -14,6 +14,7 @@
   }
   const typeByItem=new Map(Object.entries(d.typeItems).map(([type,key])=>[key,type]));
   const pokemon=new Map(d.pokemon.map((p)=>[p.id,p]));
+  const pokemonByName=new Map(d.pokemon.map((p)=>[fold(p.name),p]));
   const modes={classic:"Classic",survival:"Survival",boss:"Boss"};
   const rarities=["Comune","Non comune","Raro","Epico","Leggendario"];
   const rarityLabels=[
@@ -85,6 +86,14 @@
     element.append(frame);
   }
 
+  function readCount(value){
+    const match=value.trim().match(/^([\d.,\s]+)\s*(mil|[kmb])?(?=\s|$)/i);
+    if(!match) return 0;
+    const unit={mil:1e3,k:1e3,m:1e6,b:1e9}[match[2]?.toLowerCase()];
+    if(!unit) return Number(match[1].replace(/[^\d]/g,""))||0;
+    return (Number(match[1].trim().replace(",","."))||0)*unit;
+  }
+
   function readOffers(){
     const modal=[...document.querySelectorAll(".modal")].findLast(shown);
     if(!modal||modal.querySelector(".cards.banning")) return [];
@@ -123,6 +132,24 @@
         const confirm=selected?buttons(bill,"button.bm-go.fuse")[0]:null;
         const fuseTab=selected&&!confirm?buttons(bill,".bm-tabs > button.bm-tab:first-child")[0]:null;
         return {kind:"fusion",element:confirm||fuseTab||el,name:text(el,".bm-rtx b"),hotkey:confirm||fuseTab?"":hotkey(el,".bm-key"),confirm:!!confirm};
+      });
+    }
+
+    const releaseKeys=["release","liberar","release the new one","liberar al nuevo"];
+    const recruits=buttons(modal,".cards > button.card").filter((el)=>releaseKeys.includes(fold(text(el,".bd > .key"))));
+    if(recruits.length){
+      return recruits.map((el)=>{
+        const key=fold(text(el,".bd > .key"));
+        const name=text(el,".bd h3");
+        const moveName=text(el,".bd > p:nth-of-type(2)").match(/^[^:]+:\s*(.*?)\s*\(/)?.[1];
+        const move=moveIndex.get(fold(moveName));
+        const [kills=0,damage=0]=text(el,".bd > .sub").split(" · ").map(readCount);
+        return {
+          kind:"companion",element:el,name,hotkey:"",incoming:key===releaseKeys[2]||key===releaseKeys[3],
+          bond:Number(text(el,".top .rar").match(/\d+/)?.[0])||0,kills,damage,
+          type:move?.type??pokemonByName.get(fold(name))?.types[0],control:move?.status,
+          passive:stats.parse(text(el,".bd > p:first-of-type"))
+        };
       });
     }
 
@@ -201,6 +228,35 @@
     return parsed.every(Boolean)?parsed.reduce((sum,mod)=>sum+stats.score(mod,values),0):null;
   }
 
+  function companionChoice(offers,types,values){
+    const newcomers=offers.filter((card)=>card.incoming);
+    const team=offers.filter((card)=>!card.incoming);
+    if(newcomers.length!==1||!team.length) return null;
+    const [newcomer]=newcomers;
+    const maxDamage=Math.max(1,...team.map((card)=>card.damage));
+    const maxKills=Math.max(1,...team.map((card)=>card.kills));
+    const score=(card,coverage)=>{
+      const addsCoverage=card.type&&!coverage.has(card.type);
+      const support=stats.score(card.passive,values);
+      const control=card.control&&card.control!=="burn"&&card.control!=="poison";
+      return support+(addsCoverage ? .65 : 0)+(control ? .25 : 0)+card.bond*.22
+        +.85*card.damage/maxDamage+.45*card.kills/maxKills;
+    };
+    const swaps=team.map((card)=>{
+      const coverage=new Set([...types,...team.filter((other)=>other!==card).map((other)=>other.type)]);
+      return {card,gain:score(newcomer,coverage)-score(card,coverage)};
+    }).sort((a,b)=>b.gain-a.gain);
+    const best=swaps[0];
+    if(best.gain>=.45) return {
+      card:best.card,title:"Libera "+best.card.name+" per "+newcomer.name,
+      why:"Il nuovo compagno offre più copertura o supporto per la tua build."
+    };
+    return {
+      card:newcomer,title:"Lascia andare "+newcomer.name,
+      why:"La squadra attuale offre più valore considerando bonus, legame e contributo in partita."
+    };
+  }
+
   function suggest(b,run){
     const state=b.kit.map((move,index)=>({
       move,
@@ -219,6 +275,7 @@
     const active=run.known.flatMap((slot)=>slot.names.map((name)=>moveIndex.get(fold(name))).filter(Boolean));
     const types=new Set([...active,...b.kit].filter((move)=>move.cls!=="status").map((move)=>move.type));
     const values=stats.weights(b,run,mode,active);
+    const companion=companionChoice(run.offers.filter((card)=>card.kind==="companion"),types,values);
     const statTotal=(value)=>{
       const mods=value.split(" · ").map(stats.parse);
       return mods.every(Boolean)?mods.reduce((sum,mod)=>sum+stats.score(mod,values),0):null;
@@ -226,6 +283,11 @@
     const reserved=pair.filter((s)=>s.level===0).length;
     const early=run.level<5 && run.known.filter((s)=>s.names.length).length<=1;
     const cards=run.offers.map((card)=>{
+      if(card.kind==="companion"){
+        return card===companion?.card
+          ? {...card,score:1,title:companion.title,why:companion.why}
+          : {...card,score:0};
+      }
       if(card.kind==="blessing"){
         const bonus=stats.parse(card.name);
         const score=stats.score(bonus,values);
@@ -307,7 +369,7 @@
     if(choice){
       title=choice.action==="sell"
         ? (cards.length===1?"Vendi "+choice.name:"Prendi i Pokédollari")
-        : (sale?"Tieni ":"")+choice.name;
+        : choice.title??(sale?"Tieni ":"")+choice.name;
       if(choice.action==="sell"&&choice.payout) title+=" · "+choice.payout;
       why=choice.why;
     } else if(cards.length){

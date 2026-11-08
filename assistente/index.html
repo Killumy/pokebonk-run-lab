@@ -6,21 +6,22 @@
 <meta name="theme-color" content="#161d17">
 <title>Assistente live · PokeBonk Run Lab</title>
 <link rel="icon" href="../mark.svg">
-<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="../style.css?v=1.4.0">
 </head>
 <body>
-<header class="top"><div class="wrap bar"><a class="brand" href="../"><img src="../mark.svg" width="35" height="35" alt=""><span>PokeBonk <b>Run Lab</b></span></a><a class="play" href="https://pokebonk.com/?lang=en" target="_blank" rel="noopener">Apri PokeBonk ↗</a></div></header>
+<header class="top"><div class="wrap bar"><a class="brand" href="../"><img src="../mark.svg" width="35" height="35" alt=""><span>PokeBonk <b>Run Lab</b></span></a><a class="play pbrl-launch-game" href="https://pokebonk.com/?lang=en" target="_blank" rel="noopener">Avvia Pokebonk con RunLab</a><a class="play pbrl-launch-setup" href="#installazione">Avvia Pokebonk con RunLab</a></div></header>
 <main class="wrap catalog" style="max-width:770px">
   <div class="eyebrow">ASSISTENTE IN GIOCO</div>
   <h1 style="font-size:clamp(38px,7vw,62px)">La prossima scelta, durante la run</h1>
   <p>Il pannello compare quando inizi a giocare. Segue il tuo kit e mette una cornice viola con una leggera pulsazione sulla scelta consigliata. Evidenzia le mosse, le vitamine, gli oggetti, la fusione firma e le offerte dell’altare Unown, del dojo e delle reliquie.</p>
-  <section class="box">
+  <section class="box" id="installazione">
     <h2 style="font-size:25px">Installazione su Firefox</h2>
+    <p>Se il pulsante ti porta qui, carica l’estensione per attivare RunLab su Firefox.</p>
     <ol>
       <li><a class="primary" href="https://github.com/Killumy/pokebonk-run-lab/archive/refs/heads/main.zip">Scarica il progetto ZIP ↓</a> ed estrailo in una cartella.</li>
       <li>In Firefox, scrivi <code>about:debugging#/runtime/this-firefox</code> nella barra degli indirizzi.</li>
       <li>Clicca <strong>Carica componente aggiuntivo temporaneo…</strong> e scegli il file <code>manifest.json</code> nella cartella estratta.</li>
-      <li>Apri <a href="https://pokebonk.com/?lang=en">PokeBonk in inglese</a> o ricarica la scheda se il gioco è già aperto. Avvia una run.</li>
+      <li>Ricarica questa pagina e clicca <strong>Avvia Pokebonk con RunLab</strong>. Il pannello compare all’inizio della run.</li>
     </ol>
     <p>Per aggiornare dalla versione precedente, scarica di nuovo lo ZIP e carica il <code>manifest.json</code> dalla nuova cartella. Poi ricarica la scheda del gioco. L’installazione temporanea dura fino al riavvio di Firefox.</p>
   </section>
@@ -28,6 +29,7 @@
     <h2 style="font-size:25px">Come leggerlo</h2>
     <p>Scegli <strong>Classic</strong>, <strong>Survival</strong> o <strong>Boss</strong> dal pannello. Quando compaiono le carte, il tasto accanto al consiglio corrisponde alla scorciatoia mostrata dal gioco. Premi <strong>Riduci</strong> per liberare spazio.</p>
     <p>Quando trovi un oggetto, il pannello consiglia se tenerlo o venderlo e incornicia il pulsante. Considera l’effetto, la rarità e il limite di copie. Un’offerta di alta rarità adatta al tuo kit può superare una scelta ordinaria prevista dalla guida.</p>
+    <p>Con la squadra piena, il pannello indica se lasciare andare il nuovo Pokémon o quale compagno liberare. Il consiglio valuta copertura, bonus, legame e contributo in partita.</p>
     <p>Per le benedizioni il consiglio valuta il bonus, la fase della run e i PS rimasti. Per le reliquie confronta le statistiche. Leggi anche la passiva prima di scegliere o sostituire una reliquia.</p>
     <p>Riconoscimento in inglese e spagnolo. Il pannello legge l’interfaccia visibile nel browser e lascia a te ogni scelta.</p>
   </section>
