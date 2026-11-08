@@ -40,7 +40,7 @@ window.BONK_ASSIST_STATS=(()=>{
     megaCrit:[5,"mega crit chance|prob. megacrítico"],
     powerup:[15,"power-ups|power-up"],
     difficulty:[12,"difficulty|intensità della run|dificultad"],
-    enemyAmount:[12,"enemy count|enemy amount|cantidad enemigos"],
+    enemyAmount:[12,"enemy count|enemy amount|enemies|cantidad enemigos"],
     eliteSpawn:[18,"elite spawn|elite spawn rate|elite spawns|frequenza degli élite|aparición de élites"],
     slam:[15,"slam damage|daño de caída"]
   };

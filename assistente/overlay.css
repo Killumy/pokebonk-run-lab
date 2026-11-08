@@ -4,13 +4,27 @@
 
 .pbrl-choice-frame {
   position: absolute;
-  inset: 1px;
-  z-index: 8;
-  border: 3px solid #ffdc85;
+  inset: 2px;
+  z-index: 20;
+  border: 4px solid #ca8bff;
   border-radius: inherit;
-  box-shadow: inset 0 0 12px #ffb84a70, 0 0 12px #ffbd5e90;
+  box-shadow:
+    0 0 0 2px #512183,
+    inset 0 0 0 1px #f3dfff,
+    inset 0 0 13px #ac5bff99,
+    0 0 16px #ad63ffc0;
   box-sizing: border-box;
   pointer-events: none;
+  animation: pbrl-frame-pulse 1.9s ease-in-out infinite;
+}
+
+@keyframes pbrl-frame-pulse {
+  0%, 100% { opacity: .82; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pbrl-choice-frame { animation: none; }
 }
 
 #pbrl-assistant {
@@ -87,8 +101,8 @@
 }
 
 #pbrl-assistant .pbrl-has-choice {
-  border-color: #bd904d;
-  background: #3b3223;
+  border-color: #c48af2;
+  background: #332341;
 }
 
 #pbrl-assistant .pbrl-pick {
@@ -105,14 +119,17 @@
   overflow-wrap: anywhere;
 }
 
+#pbrl-assistant .pbrl-has-choice .pbrl-kicker,
+#pbrl-assistant .pbrl-has-choice .pbrl-pick strong { color: #ead2ff; }
+
 #pbrl-assistant .pbrl-hotkey {
   flex: none;
   min-width: 24px;
   padding: 3px;
   box-sizing: border-box;
   border-radius: 5px;
-  background: #ffdc85;
-  color: #262219;
+  background: #dbadff;
+  color: #23132f;
   font-weight: 800;
   text-align: center;
 }

@@ -15,9 +15,20 @@
   const typeByItem=new Map(Object.entries(d.typeItems).map(([type,key])=>[key,type]));
   const pokemon=new Map(d.pokemon.map((p)=>[p.id,p]));
   const modes={classic:"Classic",survival:"Survival",boss:"Boss"};
+  const rarities=["Comune","Non comune","Raro","Epico","Leggendario"];
+  const rarityLabels=[
+    ["common","comun"],["uncommon","poco comun"],["rare","raro","rara"],
+    ["epic","epico","epica"],["legendary","legendario","legendaria"]
+  ];
+  const rarityBonus=[0,4,11,23,48];
   const matches=(name,key,english,group)=>[english,aliases[group][key]].some((n)=>n && fold(n)===fold(name));
   const label=(entry,group)=>document.documentElement.lang.startsWith("es") ? aliases[group][entry.key]||entry.name : entry.name;
   const text=(root,selector)=>root.querySelector(selector)?.textContent.trim()??"";
+  const readRarity=(el,selector=".top .rar")=>{
+    const name=fold(text(el,selector));
+    const rank=rarityLabels.findIndex((labels)=>labels.includes(name));
+    return rank<0?undefined:rank;
+  };
   const shown=(el)=>el.getClientRects().length>0 && getComputedStyle(el).visibility!=="hidden";
   let hud=null;
   let partner=null;
@@ -54,10 +65,10 @@
     const src=slot.querySelector('img[src*="/items/"]')?.getAttribute("src")??"";
     return src.match(/\/items\/([^/?#]+)\.png/i)?.[1]??"";
   }
-  function hasGear(rows,entry,group){
-    return rows.some((slot)=>{
+  function gearSlot(rows,entry,group){
+    return rows.find((slot)=>{
       const name=slot.getAttribute("title")?.split(": ")[0];
-      if(name) return matches(name,entry.key,entry.name,group);
+      if(name&&matches(name,entry.key,entry.name,group)) return true;
       const icon=group==="vitamins" ? aliases.vitIcons[entry.key]||entry.key : entry.key;
       return iconKey(slot)===icon;
     });
@@ -80,15 +91,19 @@
     const buttons=(root,selector)=>[...root.querySelectorAll(selector)].filter((el)=>!el.disabled&&shown(el));
     const hotkey=(el,selector)=>text(el,selector).match(/^\[?(\d)\]?$/)?.[1]??"";
     const levelUp=buttons(modal,"button.card.offer");
-    if(levelUp.length) return levelUp.map((el)=>({kind:"level",element:el,name:text(el,".bd h3"),hotkey:hotkey(el,".key")}));
+    if(levelUp.length) return levelUp.map((el)=>({
+      kind:"level",element:el,name:text(el,".bd h3"),hotkey:hotkey(el,".key"),rarity:readRarity(el)
+    }));
 
     const blessings=buttons(modal,".cards > button.card").filter((el)=>el.querySelector('img[src*="/ui/icons/blessing.png"]'));
-    if(blessings.length) return blessings.map((el)=>({kind:"blessing",element:el,name:text(el,".bd h3"),hotkey:hotkey(el,".key")}));
+    if(blessings.length) return blessings.map((el)=>({
+      kind:"blessing",element:el,name:text(el,".bd h3"),hotkey:hotkey(el,".key"),rarity:readRarity(el)
+    }));
 
     const dojo=buttons(modal,".dj-grid > button.dj-stat");
     if(dojo.length) return dojo.map((el)=>{
       const start=el.classList.contains("on")?buttons(modal,"button.dj-go")[0]:null;
-      return {kind:"blessing",element:start||el,name:text(el,"span"),start:!!start};
+      return {kind:"blessing",element:start||el,name:text(el,"span"),start:!!start,rarity:readRarity(modal,".dj-rar")};
     });
 
     const relics=buttons(modal,".rl-cards > button.rl-card");
@@ -97,7 +112,7 @@
       const owned=[...modal.querySelectorAll(".rl-mine .rl-chip-bd > span")].map((el)=>el.textContent.trim());
       return relics.map((el)=>({
         kind:"relic",element:el,name:text(el,".rl-bd h3"),hotkey:hotkey(el,".rl-key"),
-        modifiers:text(el,".rl-stats"),incoming,owned
+        modifiers:text(el,".rl-stats"),incoming,owned,rarity:readRarity(el,".rl-rar")
       }));
     }
 
@@ -112,14 +127,25 @@
     }
 
     const shop=modal.classList.contains("shop-modal");
+    const saleButton=buttons(modal,":scope > .actions > button.btn.ghost").find((el)=>/\+\s*[\d.,\s]+₽/.test(el.textContent));
+    const sale=saleButton?{
+      element:saleButton,
+      hotkey:text(saleButton,"kbd"),
+      payout:saleButton.textContent.match(/\+\s*[\d.,\s]+₽/)?.[0]
+    }:null;
+    const itemOffer=(card,element,key,countLimit)=>({
+      kind:"item",element,name:text(card,".bd h3"),itemKey:iconKey(card),hotkey:key,
+      rarity:readRarity(card),countLimit,sale,affectsNone:!!card.querySelector(".affects.none")
+    });
     const itemCards=buttons(modal,".cards > button.card:not(.pact)").filter((el)=>
       iconKey(el) && Number(el.style.opacity||1)>=1 && (!shop||el.querySelector(".price.ok"))
     );
-    if(itemCards.length) return itemCards.map((el)=>({kind:"item",element:el,name:text(el,".bd h3"),hotkey:hotkey(el,".key")}));
+    if(itemCards.length) return itemCards.map((el)=>itemOffer(el,el,hotkey(el,".key"),text(el,".cap")));
 
     const single=modal.querySelector(":scope > div.card");
     const take=buttons(modal,":scope > .actions > button.btn.green.big")[0];
-    return single&&take&&iconKey(single) ? [{kind:"item",element:take,name:text(single,".bd h3"),hotkey:""}] : [];
+    return single&&iconKey(single)&&(take||sale)
+      ? [itemOffer(single,take,take?text(take,"kbd:not([data-nokbd])"):"",text(modal,":scope > .help"))] : [];
   }
 
   function readRun(root){
@@ -144,17 +170,35 @@
     };
   }
 
-  function itemScore(item,types,values){
-    if(!item) return 0;
+  function itemScore(item,types,values,run){
     const type=typeByItem.get(item.key);
     if(type) return types.has(type)?1.8:.25;
-    if(item.key==="shell-bell") return values.lifesteal*.8;
-    if(item.key==="leftovers") return values.regen*1.7;
-    if(item.key==="focus-sash"||item.key==="max-revive") return values.armor*1.8;
+    // A few conditional effects are expressed in prose in the catalogue.
+    const utility={
+      "expert-belt":types.size?values.superEffective*2:0,
+      "shell-bell":values.lifesteal*.8,
+      "leftovers":values.regen*1.7,
+      "focus-band":values.armor*.9,
+      "focus-sash":values.armor*1.8,
+      revive:values.armor*1.8,
+      "max-revive":values.armor*2.6,
+      "rainbow-wing":values.armor*2.6,
+      "guard-spec":values.armor*1.8,
+      "rage-candy-bar":(mode==="survival"||run.health==="low") ? .2 : 1.5,
+      "binding-band":values.statusChance>.5?1.35:.2,
+      "fire-stone":values.statusDamage>0?2:.1,
+      "water-stone":types.has("water")?2:.1,
+      "ice-stone":types.has("ice")?2:.4,
+      "thick-club":values.physical*1.6,
+      "dowsing-machine":run.stage<3?1.6:0,
+      "rare-candy":.65+values.xp,
+      "tm-case":1.8
+    }[item.key];
+    if(utility!==undefined) return utility;
     const modifiers=item.effect.split(/\.\s/)[0].split(/\s+(?:and|e|but)\s+|,\s+(?=[+−-])/);
-    // Score flat modifiers only when we can read the full first clause, including any trade-off.
+    // Read the whole clause so a negative stat is counted alongside the gain.
     const parsed=modifiers.map(stats.parse);
-    return parsed.every(Boolean)?parsed.reduce((sum,mod)=>sum+stats.score(mod,values),0):0;
+    return parsed.every(Boolean)?parsed.reduce((sum,mod)=>sum+stats.score(mod,values),0):null;
   }
 
   function suggest(b,run){
@@ -168,8 +212,8 @@
     const trackFusion=!b.fusion.limited&&!fused&&!linked;
     const pair=trackFusion?b.fusion.moves.map((key)=>state.find((s)=>s.move.key===key)):[];
     const ready=pair.length===2&&pair.every((s)=>s.level>=8);
-    const missingItems=b.items.filter((x)=>!hasGear(run.items,x,"items"));
-    const missingVits=b.vitamins.filter((x)=>!hasGear(run.vitamins,x,"vitamins"));
+    const missingItems=b.items.filter((x)=>!gearSlot(run.items,x,"items"));
+    const missingVits=b.vitamins.filter((x)=>!gearSlot(run.vitamins,x,"vitamins"));
     const priority=state.find((s)=>s.move.key===b.priority.key);
     const available=state.filter((s)=>s.unlocked&&(s.level>0||run.freeSlots));
     const active=run.known.flatMap((slot)=>slot.names.map((name)=>moveIndex.get(fold(name))).filter(Boolean));
@@ -197,12 +241,29 @@
         return {...card,score,why:card.incoming?"Sostituzione consigliata in base alle statistiche.":"Statistiche adatte al tuo kit. Controlla anche la passiva."};
       }
       if(card.kind==="item"){
-        const item=d.items.find((x)=>matches(card.name,x.key,x.name,"items"));
+        const item=d.items.find((x)=>x.key===card.itemKey)??d.items.find((x)=>matches(card.name,x.key,x.name,"items"));
         const index=b.items.indexOf(item);
-        const owned=item&&hasGear(run.items,item,"items");
-        const bonus=itemScore(item,types,values);
-        const score=index>=0&&!owned?60-index:bonus>0?Math.min(25,bonus*5+(item.rarity??0)*.05):0;
-        return {...card,score,why:index>=0&&!owned?"Oggetto da cercare per la tua build.":"Bonus utile tra gli oggetti disponibili."};
+        const slot=item&&gearSlot(run.items,item,"items");
+        const counts=(card.countLimit??"").match(/\d+/g)?.map(Number)??[];
+        const owned=counts.length===2?counts[0]:slot?(Number(text(slot,"b"))||1):0;
+        const limit=counts.at(-1)??item?.max??10;
+        const rarity=card.rarity??item?.rarity;
+        const bonus=rarityBonus[rarity]??0;
+        const utility=item?itemScore(item,types,values,run):null;
+        const planned=index>=0&&owned===0;
+        const useful=utility===null?(card.affectsNone?0:rarity>=2 ? .85 : .45):utility;
+        const score=planned?60-index:Math.min(38,useful*12);
+        // Sale is a fallback for capped items or bonuses too small to justify keeping.
+        const keep=card.element&&owned<limit&&(planned||useful>=.6-bonus/200);
+        const why=planned?"Oggetto previsto dalla tua build."
+          :item?.key==="expert-belt"?"Aumenta del 30% il danno dei colpi superefficaci."
+          :utility===null?"Effetto situazionale. La rarità aumenta la priorità."
+          :"Bonus utile per la tua build o per questa fase della run.";
+        const sellWhy=owned>=limit?"Hai raggiunto il limite di copie."
+          :!card.element?"Il pulsante per tenerlo è indisponibile."
+          :utility===null?"Bonus situazionale, con priorità bassa per la tua build."
+          :"Il bonus incide poco sulla tua build in questa fase.";
+        return {...card,rarity,score:keep?score+bonus:0,why,sellWhy};
       }
       if(card.kind==="fusion"){
         const signature=trackFusion&&matches(card.name,b.fusion.key,b.fusion.name,"fusions");
@@ -231,14 +292,23 @@
       const affinity=alternative.cls==="status"?0:values[alternative.cls]??0;
       const canLearn=run.freeSlots>reserved&&affinity>0&&types.has(alternative.type);
       return {...card,score:held?25+affinity:canLearn?15:0,why:held?"Potenzia una mossa che stai già usando.":"Copertura coerente con la tua build."};
-    }).sort((a,b)=>b.score-a.score);
+    }).map((card)=>card.kind==="level"&&card.score>0
+      ? {...card,score:card.score+(rarityBonus[card.rarity]??0)}:card
+    ).sort((a,b)=>b.score-a.score);
     const nextIngredient=pair.find((s)=>s.unlocked&&s.level===0&&run.freeSlots)??pair.find((s)=>s.level>0&&s.level<8);
     const target=nextIngredient??(available.includes(priority)?priority:available.find((s)=>s.move.cls!=="status"));
     const caption=fused?"Fusione completata":linked?"Mosse unite":ready?"Fusione pronta":run.level<=2?"Partenza":"Costruisci il kit";
-    const choice=cards[0]?.score>0?cards[0]:null;
+    const best=cards[0];
+    const sale=best?.sale;
+    const choice=best?.score>0?best:sale?{
+      ...best,...sale,action:"sell",why:cards.length===1?best.sellWhy:"Nessun bonus offerto ha abbastanza valore per questa build."
+    }:null;
     let title,why;
     if(choice){
-      title=choice.name;
+      title=choice.action==="sell"
+        ? (cards.length===1?"Vendi "+choice.name:"Prendi i Pokédollari")
+        : (sale?"Tieni ":"")+choice.name;
+      if(choice.action==="sell"&&choice.payout) title+=" · "+choice.payout;
       why=choice.why;
     } else if(cards.length){
       title="Nessuna priorità tra le offerte";
@@ -256,7 +326,7 @@
       title="Cerca un potenziamento utile";
       why=run.freeSlots?"Aspetta le offerte delle mosse del tuo kit.":"Gli slot sono pieni. Potenzia una mossa utile già equipaggiata.";
     }
-    return {choice,caption,title,why,pair,missingItems,missingVits};
+    return {choice,caption,title,why,rarity:cards.length>1&&choice?.action==="sell"?null:rarities[choice?.rarity],pair,missingItems,missingVits};
   }
 
   function render(p,run,result,hotkey,recommended){
@@ -287,7 +357,7 @@
     const pick=create("div","","pbrl-pick");
     if(hotkey) pick.append(create("span",hotkey,"pbrl-hotkey"));
     pick.append(create("strong",result.title));
-    advice.append(create("span",recommended?"Consigliato ora":run.offers.length?"Offerte in gioco":result.caption,"pbrl-kicker"),pick,create("small",result.why));
+    advice.append(create("span",recommended?"Consigliato ora"+(result.rarity?" · "+result.rarity:""):run.offers.length?"Offerte in gioco":result.caption,"pbrl-kicker"),pick,create("small",result.why));
     panel.append(advice);
     const info=create("div","","pbrl-info");
     const equipped=run.known.filter((s)=>s.names.length).map((s)=>s.names.join(" + ")+" "+s.displayLevel).join(" · ");

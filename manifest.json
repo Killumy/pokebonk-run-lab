@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PokeBonk Run Lab Assistant",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Pannello di supporto per le scelte durante le run di PokeBonk.",
   "browser_specific_settings": {
     "gecko": {
