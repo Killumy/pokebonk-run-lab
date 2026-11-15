@@ -2,9 +2,6 @@
 
 window.BONK_BUILD=(()=>{
   const d=window.BONK;
-  const signatures=new Map(d.fusions.filter((f)=>f.member).map((f)=>[f.member,f]));
-  const items=new Map(d.items.map((i)=>[i.key,i]));
-  const vits=new Map(d.vitamins.map((v)=>[v.key,v]));
   const notes={
     1:"Usa Sleep Powder per guadagnare spazio e Solar Beam per aprirti un corridoio. Razor Leaf rimane utile anche per preparare Flower Beam.",
     4:"Fire Spin tiene la pressione mentre ti muovi. Portalo avanti con Flamethrower per preparare Fiery Whirlwind. Se il danno basta, investi in mobilità e recupero.",
@@ -21,6 +18,9 @@ window.BONK_BUILD=(()=>{
   const projectiles=new Set(["bolt","barrage","homing","boomerang","orb"]);
   const control=new Set(["freeze","sleep","paralysis","confusion","trap","flinch"]);
   function build(p,goal) {
+    const signatures=new Map(d.fusions.filter((f)=>f.member).map((f)=>[f.member,f]));
+    const items=new Map(d.items.map((i)=>[i.key,i]));
+    const vits=new Map(d.vitamins.map((v)=>[v.key,v]));
     const fusion=signatures.get(p.id);
     const kit=p.league.kit.map((key)=>({key,...d.moves[key]}));
     const score=(m)=>{
@@ -48,7 +48,6 @@ window.BONK_BUILD=(()=>{
     let strategy=goal==="survival"?'Dai priorità a '+priority.name+' e tieni una scelta per la difesa. Mobilità e controllo ti aiutano a lasciare un’uscita quando la folla chiude il passaggio.':
       goal==="boss"?'Prova '+priority.name+' contro il bersaglio singolo. Conserva una mossa per liberare spazio e dai priorità ai bonus di danno che si applicano al tuo attacco principale.':
       notes[p.id]||('Apri con '+kit[0].name+' e potenzia '+priority.name+' quando compare. '+(fusion.limited?'Cerca una mossa complementare per coprire la distanza o la folla.':'Se la run regge già le ondate, conserva gli ingredienti per '+fusion.name+'.'));
-    if(p.id===198) strategy+=" Dalla v0.9.18, il danno di Foul Play contro lo sciame finale ha un limite.";
     return {fusion,kit,priority,items:[...new Set(equipment)].map((k)=>items.get(k)).filter(Boolean),vitamins:vitamins.map((k)=>vits.get(k)),strategy};
   }
   const offerLevels=[1,2,4,7];

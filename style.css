@@ -73,3 +73,5 @@ dialog{padding:0;width:min(770px,calc(100% - 26px));max-width:none;max-height:ca
 
 .pbrl-launch-game, [data-pbrl-ready] .pbrl-launch-setup { display: none; }
 [data-pbrl-ready] .pbrl-launch-game { display: inline-block; }
+
+.data-status{color:var(--muted);font-size:12px;line-height:1.6;margin:12px 0 6px}.data-status a{color:var(--gold)}

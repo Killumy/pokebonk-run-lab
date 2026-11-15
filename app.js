@@ -8,7 +8,7 @@ const id=new Map(d.pokemon.map((p)=>[p.id,p]));
 const keys=new Map(d.pokemon.map((p)=>[p.key,p]));
 const league=d.pokemon.filter((p)=>p.league);
 // Classic solo, strongest first in each tier. Weigh opening, waves, bosses and survival.
-const tiers=[
+const tiers=window.BONK_TIERS??[
   ["S++",["articuno","suicune","ho-oh"]],
   ["S+",["gastly","shellder","raikou","bulbasaur","heracross"]],
   ["S",["clefairy","tangela","celebi","nidoran-m","chikorita","drowzee"]],
@@ -56,7 +56,7 @@ const gearArt=(x)=>illustration(x.rarity==null?"vitamins":"items",x.key);
 const number=(p)=>"#"+String(p.id).padStart(3,"0");
 const regions=[["","Tutte le regioni"],["1","Kanto"],["2","Johto"]];
 const pages={
-  classifica:["01 / LEGA","Classifica Pokémon",'Classifica editoriale per Classic in singolo, dal più forte al meno forte in ogni tier. Pesano la partenza, le ondate, i boss e la sopravvivenza. Base di confronto <a href="https://pokebonk.co/tier-list" target="_blank" rel="noopener">community v0.9.8</a>.',"Cerca Pokémon, evoluzione o mossa…"],
+  classifica:["01 / LEGA","Classifica Pokémon",'Classifica stimata per Classic in singolo. Il riferimento iniziale viene ricalcolato quando cambiano danno, kit, passive e fusioni del client. I Pokémon sono ordinati per forza stimata in ogni tier.',"Cerca Pokémon, evoluzione o mossa…"],
   pokedex:["02 / KANTO + JOHTO","Pokédex","Esplora le specie e apri la build del relativo partner di Lega.","Cerca nome, numero o tipo…"],
   oggetti:["03 / EQUIPAGGIAMENTO","Oggetti e vitamine","Cerca bonus e limiti per run. Alcuni effetti sono riportati in inglese, come nel client.","Cerca nome, effetto o statistica…"],
   fusioni:["04 / MACCHINA DI BILL","Fusioni","Cerca una fusione firma, un ingrediente o un tipo. Le mosse devono raggiungere il livello 8.","Cerca una mossa, una fusione o un Pokémon…"]
@@ -233,7 +233,7 @@ function detail() {
     const b=build(p,mode);
     body+='<div class="mode" role="group" aria-label="Obiettivo della build"><b>Obiettivo</b>'+buttons("mode",Object.entries(modes),mode)+'</div><p class="strategy">'+h(b.strategy)+'</p>'+
       timeline(runSteps(b,mode))+detailsReference(p,b)+lineage(p)+
-      '<p class="dim">Mosse, oggetti e fusioni firma dal <a href="https://pokebonk.com/version.json" target="_blank" rel="noopener">client v'+h(d.version)+'</a>. Ultimate e sblocco dalla <a href="https://pokebonk.co/tier-list#'+h(p.league.anchor)+'" target="_blank" rel="noopener">guida community v0.9.8</a>. Le scelte suggerite dipendono dalle offerte e dall’andamento della run.</p>'+
+      '<p class="dim">Mosse, oggetti e fusioni firma dal <a href="https://pokebonk.com/version.json" target="_blank" rel="noopener">client v'+h(d.version)+'</a>. Kit, passive e sblocco sincronizzati dal client. Le scelte suggerite dipendono dalle offerte e dall’andamento della run.</p>'+
       '<div class="detail-foot"><a class="primary" href="assistente/">Assistente live ↗</a><button type="button" class="secondary" data-copy="build">Copia guida</button><button type="button" class="secondary" data-copy="link">Copia link ↗</button><span class="status" id="status" role="status"></span></div>';
   }
   $("detail").innerHTML=head+'<div class="detail-body">'+body+'</div>';
@@ -339,6 +339,19 @@ document.addEventListener("click",(e)=>{
   }
 });
 window.addEventListener("hashchange",route);
+function facts(){
 $("facts").innerHTML=[[league.length,"Partner di Lega","✦"],[d.pokemon.length,"Specie nel Pokédex","◎"],[d.items.length,"Oggetti in run","◇"],[d.fusions.length,"Fusioni","⚡"]].map(([n,name,icon])=>'<div class="fact"><span class="fact-icon" aria-hidden="true">'+icon+'</span><span><b>'+n+'</b><small>'+name+'</small></span></div>').join("");
+}
+window.addEventListener("bonk-catalog-updated",()=>{
+  id.clear(); keys.clear(); rankByKey.clear(); signatures.clear();
+  for(const p of d.pokemon){id.set(p.id,p);keys.set(p.key,p);}
+  league.splice(0,league.length,...d.pokemon.filter((p)=>p.league));
+  if(window.BONK_TIERS) tiers.splice(0,tiers.length,...window.BONK_TIERS.map(([tier,entries])=>[tier,[...entries]]));
+  tiers.forEach(([tier,partners],tierIndex)=>partners.forEach((key,index)=>rankByKey.set(key,{tier,tierIndex,position:index+1})));
+  for(const f of d.fusions) if(f.member) signatures.set(f.member,f);
+  if(current) current=keys.get(current.key)??null;
+  facts(); page(); if(current) detail();
+});
+facts();
 page();
 route();

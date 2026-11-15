@@ -1,0 +1,56 @@
+name: Update game catalog
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - sync/catalog.js
+      - scripts/update-catalog.cjs
+      - .github/workflows/update-catalog.yml
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: catalog-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fetch and validate official catalog
+        run: node scripts/update-catalog.cjs
+      - name: Save the checked snapshot
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add data.js assistente/aliases.js sync/snapshot.json
+          git diff --cached --quiet && exit 0
+          git commit -m 'Update official game data'
+          git push origin HEAD:main
+      - uses: actions/configure-pages@v5
+      - name: Prepare Pages artifact
+        run: |
+          mkdir /tmp/runlab-pages
+          git archive HEAD | tar -x -C /tmp/runlab-pages
+          rm -rf /tmp/runlab-pages/.github /tmp/runlab-pages/scripts
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: /tmp/runlab-pages
+      - uses: actions/deploy-pages@v4
+        id: deployment

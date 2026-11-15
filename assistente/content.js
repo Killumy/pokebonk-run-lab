@@ -48,6 +48,31 @@
   let plan=null;
   let framed=null;
   let frame=null;
+  let dataChecked=null;
+  let dataCheckFailed=false;
+
+  function updateCatalogue(response){
+    const snapshot=response?.snapshot;
+    if(!response?.ok||snapshot?.schema!==1||!snapshot.data?.pokemon?.length) return;
+    Object.assign(d,snapshot.data);
+    for(const [group,entries] of Object.entries(snapshot.aliases??{})) Object.assign(aliases[group]??={},entries);
+    moveIndex.clear(); fusionIndex.clear(); pokemon.clear(); pokemonByName.clear(); typeByItem.clear();
+    for(const [key,move] of Object.entries(d.moves)){
+      const entry={key,...move};
+      moveIndex.set(fold(move.name),entry);
+      if(aliases.moves[key]) moveIndex.set(fold(aliases.moves[key]),entry);
+    }
+    for(const fusion of d.fusions){
+      fusionIndex.set(fold(fusion.name),fusion);
+      if(aliases.fusions[fusion.key]) fusionIndex.set(fold(aliases.fusions[fusion.key]),fusion);
+    }
+    for(const p of d.pokemon){pokemon.set(p.id,p);pokemonByName.set(fold(p.name),p);}
+    for(const [type,key] of Object.entries(d.typeItems)) typeByItem.set(key,type);
+    dataChecked=snapshot.meta.checkedAt;
+    if(partner){partner=pokemon.get(partner.id);plan=partner?.league?build(partner,mode):null;}
+    previous="";
+    refresh();
+  }
 
   function create(tag,value,cls){
     const node=document.createElement(tag);
@@ -505,7 +530,7 @@
 
   function render(p,run,result,hotkey,recommended){
     const top=create("div","","pbrl-top");
-    top.append(create("span","RUN LAB","pbrl-kicker"),create("strong",p.name+" · Lv. "+run.level));
+    top.append(create("span","RUN LAB · v"+d.version,"pbrl-kicker"),create("strong",p.name+" · Lv. "+run.level));
     const toggle=create("button",folded?"Mostra":"Riduci");
     toggle.type="button";
     toggle.setAttribute("aria-expanded",String(!folded));
@@ -557,6 +582,7 @@
     if(result.missingVits.length){
       info.append(create("small","Vitamina da cercare · "+label(result.missingVits[0],"vitamins"),"pbrl-gear"));
     }
+    info.append(create("small",dataChecked?"Dati verificati ora dal gioco":"Catalogo v"+d.version+(dataCheckFailed?" · controllo online non riuscito":" · controllo in corso"),"pbrl-gear"));
     panel.append(info);
   }
 
@@ -598,6 +624,11 @@
     }
   }
 
+  const extension=globalThis.chrome??globalThis.browser;
+  if(extension?.runtime) extension.runtime.sendMessage({type:"pbrl-catalog"},(response)=>{
+    if(!extension.runtime.lastError&&response?.ok) updateCatalogue(response);
+    else {dataCheckFailed=true;previous="";refresh();}
+  });
   setInterval(refresh,300);
   document.addEventListener("fullscreenchange",refresh);
   refresh();
